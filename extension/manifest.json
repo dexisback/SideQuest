@@ -8,6 +8,8 @@
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
+    "https://www.chatgpt.com/*",
+    "https://*.openai.com/*",
     "https://gemini.google.com/*"
   ],
   "background": { "service_worker": "background/background.js", "type": "module" },
@@ -16,10 +18,12 @@
       "matches": [
         "https://chat.openai.com/*",
         "https://chatgpt.com/*",
+        "https://www.chatgpt.com/*",
+        "https://*.openai.com/*",
         "https://gemini.google.com/*"
       ],
       "js": ["content/content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [

@@ -55,8 +55,14 @@ async function appendMessage(threadId, msg) {
 async function sendToActiveTab(message) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id) {
-    await chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+    try {
+      const res = await chrome.tabs.sendMessage(tab.id, message);
+      return res;
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
   }
+  return { ok: false, error: 'no-active-tab' };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -79,8 +85,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       case 'SIDEQUEST_SEND_FOLLOWUP': {
         // Forward to content script to interact with page DOM
-        await sendToActiveTab({ type: 'SIDEQUEST_SEND_FOLLOWUP', text: message.text, threadId: message.threadId });
-        sendResponse({ ok: true });
+        const res = await sendToActiveTab({ type: 'SIDEQUEST_SEND_FOLLOWUP', text: message.text, threadId: message.threadId });
+        sendResponse(res?.ok === false ? res : { ok: true });
+        break;
+      }
+      case 'SIDEQUEST_CAPTURE_LATEST': {
+        const res = await sendToActiveTab({ type: 'SIDEQUEST_CAPTURE_LATEST' });
+        // If content captured and background created a thread via BOOKMARK handler,
+        // we just bubble the result back.
+        sendResponse(res?.ok === false ? res : { ok: true });
         break;
       }
       default:

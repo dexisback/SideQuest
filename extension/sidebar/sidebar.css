@@ -9,10 +9,11 @@
 html, body { margin: 0; padding: 0; height: 100%; }
 body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; color: var(--sq-text); background: var(--sq-bg); }
 
-.sq-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--sq-border); background: #fafafa; }
-.sq-header button { border: 1px solid var(--sq-border); border-radius: 6px; background: #fff; padding: 4px 8px; cursor: pointer; }
+.sq-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--sq-border); background: #fafafa; }
+.sq-header .icon { border: 1px solid var(--sq-border); border-radius: 8px; background: #fff; padding: 6px 8px; cursor: pointer; line-height: 1; }
+.sq-header-actions { display: flex; gap: 8px; }
 
-.sq-content { display: grid; grid-template-columns: 1fr 2fr; height: calc(100vh - 42px); }
+.sq-content { display: grid; grid-template-columns: 1.1fr 2fr; height: calc(100vh - 46px); }
 
 .sq-threads { border-right: 1px solid var(--sq-border); overflow: auto; }
 .sq-threads ul { list-style: none; margin: 0; padding: 0; }
@@ -22,7 +23,7 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarel
 .sq-threads .meta { font-size: 12px; color: var(--sq-subtle); }
 
 .sq-thread-panel { display: flex; flex-direction: column; height: 100%; }
-.sq-thread-view { flex: 1; overflow: auto; padding: 12px; }
+.sq-thread-view { flex: 1; overflow: auto; padding: 14px; }
 .sq-empty { color: var(--sq-subtle); padding: 24px; text-align: center; }
 
 .msg { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--sq-border); border-radius: 8px; }
@@ -30,6 +31,8 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarel
 .msg.assistant { background: #f5faff; }
 .msg .role { font-size: 12px; color: var(--sq-subtle); margin-bottom: 6px; }
 
-.sq-composer { border-top: 1px solid var(--sq-border); padding: 8px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.sq-composer textarea { width: 100%; min-height: 64px; resize: vertical; padding: 8px; border: 1px solid var(--sq-border); border-radius: 8px; font: inherit; }
-.sq-composer button { padding: 8px 12px; border: 1px solid var(--sq-border); border-radius: 8px; background: var(--sq-accent); color: white; cursor: pointer; }
+.sq-composer { border-top: 1px solid var(--sq-border); padding: 10px; display: grid; grid-template-columns: 1fr auto; gap: 10px; background: #fafafa; }
+.sq-composer textarea { width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--sq-border); border-radius: 10px; font: inherit; box-shadow: inset 0 1px 2px rgba(0,0,0,0.04); }
+.sq-composer button { padding: 10px 14px; border: 1px solid var(--sq-border); border-radius: 10px; background: var(--sq-accent); color: white; cursor: pointer; font-weight: 600; }
+
+.sidequest-star-btn { pointer-events: auto; z-index: 2147483646; }

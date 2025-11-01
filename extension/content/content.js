@@ -1,16 +1,20 @@
 // Content script: injects sidebar, attaches star buttons, observes replies, and handles follow-ups.
 
 (function () {
+  console.log('[SideQuest] Content script loaded at', location.href);
+  
   const STATE = {
     provider: detectProvider(location.href),
     sidebarIframe: null,
   };
 
   function detectProvider(url) {
-    if (/chat\.openai\.com/.test(url)) return 'chatgpt';
+    if (/chat\.openai\.com|chatgpt\.com/.test(url)) return 'chatgpt';
     if (/gemini\.google\.com/.test(url)) return 'gemini';
     return 'unknown';
   }
+  
+  console.log('[SideQuest] Provider detected:', STATE.provider);
 
   // Sidebar injection (as iframe from extension assets)
   function ensureSidebar() {
@@ -36,16 +40,49 @@
     let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
-  // Heuristic: find assistant bubbles in ChatGPT/Gemini
+  // Heuristic: find assistant bubbles in ChatGPT/Gemini (2024–2025 DOM variants)
   function findAssistantBubbles() {
-    switch (STATE.provider) {
-      case 'chatgpt':
-        return Array.from(document.querySelectorAll('[data-message-author-role="assistant"], .assistant, [data-testid="conversation-turn-assistant"]').values());
-      case 'gemini':
-        return Array.from(document.querySelectorAll('[data-author="model"], .assistant, [aria-label*="response"]').values());
-      default:
-        return [];
+    if (STATE.provider === 'chatgpt') {
+      const nodes = new Set();
+      
+      // Try primary attribute selector
+      document.querySelectorAll('[data-message-author-role="assistant"]').forEach(el => {
+        const container = el.closest('[data-testid^="conversation-turn-"], [data-testid="conversation-turn"], article, section') || el.parentElement?.parentElement || el;
+        nodes.add(container);
+      });
+      
+      // If that found nothing, try scanning all message containers and filter by presence of action buttons
+      if (nodes.size === 0) {
+        document.querySelectorAll('[data-testid^="conversation-turn-"], [role="listitem"]').forEach(el => {
+          const text = el.innerText || '';
+          // Heuristic: assistant messages tend to be long-form and have action buttons
+          if (text.length > 20 && el.querySelector('button[aria-label*="Copy" i], button[data-testid*="copy" i]')) {
+            nodes.add(el);
+          }
+        });
+      }
+      
+      // Ultimate fallback: grab all substantial divs that look like message containers
+      if (nodes.size === 0) {
+        document.querySelectorAll('div[role="article"], article, div[data-message-author-role]').forEach(el => {
+          const text = (el.innerText || '').trim();
+          if (text.length > 20) nodes.add(el);
+        });
+      }
+      
+      return Array.from(nodes).filter(Boolean);
     }
+    if (STATE.provider === 'gemini') {
+      const candidates = [
+        '[data-author="model"]',
+        '[aria-label*="response" i]',
+        '.assistant',
+      ];
+      const nodes = new Set();
+      candidates.forEach(sel => document.querySelectorAll(sel).forEach(n => nodes.add(n.closest('article, div, section') || n)));
+      return Array.from(nodes).filter(Boolean);
+    }
+    return [];
   }
 
   function extractQAFromBubble(node) {
@@ -65,6 +102,18 @@
     return { provider: STATE.provider, question, answer };
   }
 
+  function findLatestAssistantBubble() {
+    const bubbles = findAssistantBubbles();
+    // choose the last one in DOM order with sufficient text length
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const n = bubbles[i];
+      const txt = (n?.innerText || '').trim();
+      // accept very short answers too (e.g., "hi")
+      if (txt && txt.replace(/\s+/g, '').length > 0) return n;
+    }
+    return null;
+  }
+
   function attachStar(node) {
     if (!node || node.dataset.sidequestAttached) return;
     node.dataset.sidequestAttached = '1';
@@ -82,7 +131,8 @@
       border: '1px solid rgba(0,0,0,0.1)',
       borderRadius: '6px',
       padding: '2px 6px',
-      boxShadow: '0 1px 2px rgba(0,0,0,0.08)'
+      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+      zIndex: '2147483646'
     });
     btn.addEventListener('click', () => {
       const payload = extractQAFromBubble(node);
@@ -90,16 +140,20 @@
     });
 
     // Create a relatively positioned wrapper if needed
-    const wrapper = node.closest('[data-sidequest-wrapper]') || node;
-    if (getComputedStyle(wrapper).position === 'static') {
-      wrapper.style.position = 'relative';
-    }
+    const wrapper = node;
+    try {
+      if (getComputedStyle(wrapper).position === 'static') {
+        wrapper.style.position = 'relative';
+      }
+    } catch {}
     wrapper.appendChild(btn);
   }
 
   function scanAndAttachStars() {
     const bubbles = findAssistantBubbles();
     bubbles.forEach(attachStar);
+    // Show floating star on latest bubble as an extra fallback
+    if (bubbles.length) ensureOverlayFor(bubbles[bubbles.length - 1]); else hideOverlay();
   }
 
   const debouncedScan = debounce(scanAndAttachStars, 300);
@@ -110,6 +164,9 @@
     scanAndAttachStars();
   }
 
+  window.addEventListener('scroll', positionOverlay, { passive: true });
+  window.addEventListener('resize', positionOverlay, { passive: true });
+
   // Handle follow-up requests from sidebar via background relay
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === 'SIDEQUEST_SEND_FOLLOWUP') {
@@ -117,54 +174,207 @@
       sendFollowUp(text).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
       return true;
     }
+    if (msg?.type === 'SIDEQUEST_CAPTURE_LATEST') {
+      try {
+        let node = findLatestAssistantBubble();
+        if (node) {
+          const payload = extractQAFromBubble(node);
+          chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload }, () => sendResponse({ ok: true }));
+          return true;
+        }
+        // Fallback: capture current text selection if any
+        const sel = (window.getSelection()?.toString() || '').trim();
+        if (sel) {
+          const payload = { provider: STATE.provider, question: '', answer: sel };
+          chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload }, () => sendResponse({ ok: true, via: 'selection' }));
+          return true;
+        }
+        sendResponse({ ok: false, error: 'no-bubble' });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+      return true;
+    }
     return false;
   });
 
   async function sendFollowUp(text) {
+    console.log('[SideQuest] Starting sendFollowUp with text:', text);
     const oldY = window.scrollY;
     const input = findChatInput();
+    console.log('[SideQuest] Found input:', input?.tagName, input?.id, input?.placeholder);
     if (!input) throw new Error('input-not-found');
-    focusAndSetValue(input, text);
-    triggerSend(input);
+    await focusAndSetValue(input, text);
+    console.log('[SideQuest] Value set, input.value now:', input.value);
+    await triggerSend(input);
     window.scrollTo(0, oldY);
+    console.log('[SideQuest] Send complete');
   }
 
   function findChatInput() {
     if (STATE.provider === 'chatgpt') {
-      return document.querySelector('textarea, [contenteditable="true"]');
+      // Try exact id/selector ChatGPT uses most consistently
+      const exact = document.querySelector('textarea#prompt-textarea');
+      if (exact) return exact;
+      
+      // Try all textareas in the page, prefer one near the bottom (chat input area)
+      const textareas = Array.from(document.querySelectorAll('textarea'));
+      if (textareas.length > 0) {
+        const botmost = textareas.sort((a, b) => 
+          b.getBoundingClientRect().top - a.getBoundingClientRect().top
+        )[0];
+        if (botmost) return botmost;
+      }
+      
+      // Try contenteditable with role=textbox
+      return document.querySelector('[contenteditable="true"][role="textbox"]');
     } else if (STATE.provider === 'gemini') {
-      return document.querySelector('textarea, [contenteditable="true"]');
+      return (
+        document.querySelector('textarea') ||
+        document.querySelector('[contenteditable="true"]')
+      );
     }
     return null;
   }
 
-  function focusAndSetValue(el, text) {
+  async function focusAndSetValue(el, text) {
     if (!el) return;
+    console.log('[SideQuest] focusAndSetValue: element type =', el.tagName);
     el.focus();
+    await new Promise(r => requestAnimationFrame(r));
+    
     if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      el.value = text;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+      // Use the native setter so React detects the change
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) {
+        setter.call(el, text);
+        console.log('[SideQuest] Used native setter');
+      } else {
+        el.value = text;
+        console.log('[SideQuest] Used direct assignment');
+      }
+      // Dispatch comprehensive event sequence
+      ['input', 'change', 'keyup', 'keydown'].forEach(type => {
+        el.dispatchEvent(new Event(type, { bubbles: true }));
+      });
     } else if (el.getAttribute('contenteditable') === 'true') {
-      el.textContent = text;
+      try {
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, text);
+        console.log('[SideQuest] Used execCommand for contenteditable');
+      } catch {
+        el.textContent = text;
+        console.log('[SideQuest] Used textContent fallback');
+      }
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
   }
 
-  function triggerSend(el) {
-    // Try Enter key
-    const ev = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true });
-    el.dispatchEvent(ev);
-    // Also try to click send buttons nearby
-    const sendBtn = document.querySelector('button[type="submit"], button[aria-label*="Send" i], button[data-testid*="send" i]');
-    if (sendBtn) sendBtn.click();
+  async function triggerSend(el) {
+    if (!el) return;
+    console.log('[SideQuest] triggerSend starting');
+    
+    // Give the input time to fully register the value change
+    await new Promise(r => setTimeout(r, 150));
+    
+    // Try to find send button using multiple strategies
+    let sendBtn = null;
+    
+    // Strategy 1: Look for send-button data-testid (most reliable for ChatGPT)
+    sendBtn = document.querySelector('button[data-testid="send-button"]');
+    if (sendBtn && !sendBtn.disabled) {
+      console.log('[SideQuest] Found send button via data-testid');
+    } else {
+      sendBtn = null;
+    }
+    
+    // Strategy 2: Look for button near the input with aria-label containing "send"
+    if (!sendBtn) {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      sendBtn = buttons.find(b => {
+        const label = (b.getAttribute('aria-label') || '').toLowerCase();
+        const title = (b.getAttribute('title') || '').toLowerCase();
+        return (label.includes('send') || title.includes('send')) && !b.disabled;
+      });
+      if (sendBtn) console.log('[SideQuest] Found send button via aria-label');
+    }
+    
+    // Strategy 3: Look for submit button in the form/container
+    if (!sendBtn) {
+      sendBtn = el.closest('form')?.querySelector('button[type="submit"]:not([disabled])');
+      if (sendBtn) console.log('[SideQuest] Found send button as form submit');
+    }
+    
+    // Strategy 4: Look for button with SVG or text containing "send"
+    if (!sendBtn) {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      sendBtn = buttons.find(b => {
+        const html = b.innerHTML.toLowerCase();
+        return (html.includes('send') || html.includes('plane') || html.includes('arrow')) && !b.disabled;
+      });
+      if (sendBtn) console.log('[SideQuest] Found send button via innerHTML');
+    }
+    
+    if (sendBtn) {
+      console.log('[SideQuest] Clicking send button');
+      sendBtn.click();
+      await new Promise(r => setTimeout(r, 50));
+      sendBtn.click(); // Click twice to be sure
+    } else {
+      console.log('[SideQuest] No send button found, falling back to Enter key');
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      await new Promise(r => setTimeout(r, 50));
+      el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      await new Promise(r => setTimeout(r, 50));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+    }
+    console.log('[SideQuest] triggerSend complete');
   }
 
-  // Initialize
-  ensureSidebar();
-  startObserving();
-})();
+  // Floating overlay star anchored to the latest assistant bubble (extra fallback)
+  let overlayStarEl = null; let overlayTarget = null; let overlayBound = null;
+  function ensureOverlayFor(node) {
+    overlayTarget = node;
+    if (!overlayStarEl) {
+      overlayStarEl = document.createElement('button');
+      overlayStarEl.textContent = '⭐';
+      overlayStarEl.title = 'Save to SideQuest';
+      Object.assign(overlayStarEl.style, {
+        position: 'absolute', border: '1px solid rgba(0,0,0,0.1)', background: '#fff', borderRadius: '6px',
+        padding: '2px 6px', fontSize: '16px', cursor: 'pointer', zIndex: 2147483647, boxShadow: '0 1px 2px rgba(0,0,0,0.08)'
+      });
+      overlayStarEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!overlayTarget) return;
+        const payload = extractQAFromBubble(overlayTarget);
+        chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload });
+      });
+      document.body.appendChild(overlayStarEl);
+    }
+    positionOverlay();
+  }
+  function positionOverlay() {
+    if (!overlayStarEl || !overlayTarget) return;
+    const r = overlayTarget.getBoundingClientRect();
+    overlayStarEl.style.top = `${Math.max(0, r.top + window.scrollY + 6)}px`;
+    overlayStarEl.style.left = `${Math.max(0, r.right + window.scrollX - 28)}px`;
+    overlayStarEl.style.display = r.width > 0 && r.height > 0 ? 'block' : 'none';
+  }
+  function hideOverlay() { if (overlayStarEl) overlayStarEl.style.display = 'none'; }
 
-// ---
+  // Initialize
+   ensureSidebar();
+   startObserving();
+   
+   // Log startup status
+   setTimeout(() => {
+     const bubbles = findAssistantBubbles();
+     const input = findChatInput();
+     const sendBtn = document.querySelector('button[data-testid="send-button"]');
+     console.log('[SideQuest READY] provider=' + STATE.provider + ' bubbles=' + bubbles.length + ' input=' + (input?.tagName || 'none') + ' sendBtn=' + !!sendBtn);
+   }, 500);
+ })();// ---
 // SideQuest helpers: selection capture + page info gatherer with safe scoping
 // This mirrors the user's custom logic but fixes scope issues and SPA URL changes.
 // ---

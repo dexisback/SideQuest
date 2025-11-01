@@ -6,6 +6,7 @@ const els = {
   threadList: document.getElementById('threadList'),
   threadView: document.getElementById('threadView'),
   refreshBtn: document.getElementById('refreshBtn'),
+  captureLatestBtn: document.getElementById('captureLatestBtn'),
   composer: document.getElementById('composer'),
   sendBtn: document.getElementById('sendBtn'),
 };
@@ -110,6 +111,30 @@ els.composer.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     sendFollowUp();
+  }
+});
+
+els.captureLatestBtn.addEventListener('click', async () => {
+  // Ask content script to capture the most recent assistant bubble
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({ type: 'SIDEQUEST_CAPTURE_LATEST' });
+  } catch (e) {
+    // If extension was reloaded, the iframe's extension context may be invalidated.
+    // Reload this iframe to re-bind chrome.runtime.*
+    try { location.reload(); } catch {}
+    res = {};
+  }
+  if (res?.ok) {
+    await refresh();
+  } else {
+    // Surface a simple inline toast by briefly changing header title
+    const header = document.querySelector('.sq-header .sq-header-left');
+    if (header) {
+      const old = header.textContent || 'SideQuest';
+      header.textContent = res?.error ? String(res.error) : 'No assistant message found yet';
+      setTimeout(() => (header.textContent = old), 1500);
+    }
   }
 });
 
