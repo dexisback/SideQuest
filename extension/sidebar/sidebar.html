@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SideQuest</title>
+    <link rel="stylesheet" href="sidebar.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="sq-header">
+        <strong>SideQuest</strong>
+        <button id="refreshBtn" title="Refresh">↻</button>
+      </header>
+      <div class="sq-content">
+        <div class="sq-threads">
+          <ul id="threadList"></ul>
+        </div>
+        <div class="sq-thread-panel">
+          <div id="threadView" class="sq-thread-view">
+            <div class="sq-empty">Select a thread or bookmark one ⭐</div>
+          </div>
+          <div class="sq-composer">
+            <textarea id="composer" placeholder="Write a follow-up..."></textarea>
+            <button id="sendBtn">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="sidebar.js" type="module"></script>
+  </body>
+  </html>
