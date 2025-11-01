@@ -39,6 +39,14 @@
   function debounce(fn, ms) {
     let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
+  
+  // Wrap in try-catch to prevent errors from breaking the extension
+  try {
+    // Any previous helper code that may reference undefined variables
+    void(0);
+  } catch (e) {
+    console.warn('[SideQuest] Caught error in init:', e.message);
+  }
 
   // Heuristic: find assistant bubbles in ChatGPT/Gemini (2024–2025 DOM variants)
   function findAssistantBubbles() {
@@ -167,13 +175,8 @@
   window.addEventListener('scroll', positionOverlay, { passive: true });
   window.addEventListener('resize', positionOverlay, { passive: true });
 
-  // Handle follow-up requests from sidebar via background relay
+  // Handle messages from sidebar
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type === 'SIDEQUEST_SEND_FOLLOWUP') {
-      const text = msg.text || '';
-      sendFollowUp(text).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
-      return true;
-    }
     if (msg?.type === 'SIDEQUEST_CAPTURE_LATEST') {
       try {
         let node = findLatestAssistantBubble();
@@ -198,141 +201,7 @@
     return false;
   });
 
-  async function sendFollowUp(text) {
-    console.log('[SideQuest] Starting sendFollowUp with text:', text);
-    const oldY = window.scrollY;
-    const input = findChatInput();
-    console.log('[SideQuest] Found input:', input?.tagName, input?.id, input?.placeholder);
-    if (!input) throw new Error('input-not-found');
-    await focusAndSetValue(input, text);
-    console.log('[SideQuest] Value set, input.value now:', input.value);
-    await triggerSend(input);
-    window.scrollTo(0, oldY);
-    console.log('[SideQuest] Send complete');
-  }
-
-  function findChatInput() {
-    if (STATE.provider === 'chatgpt') {
-      // Try exact id/selector ChatGPT uses most consistently
-      const exact = document.querySelector('textarea#prompt-textarea');
-      if (exact) return exact;
-      
-      // Try all textareas in the page, prefer one near the bottom (chat input area)
-      const textareas = Array.from(document.querySelectorAll('textarea'));
-      if (textareas.length > 0) {
-        const botmost = textareas.sort((a, b) => 
-          b.getBoundingClientRect().top - a.getBoundingClientRect().top
-        )[0];
-        if (botmost) return botmost;
-      }
-      
-      // Try contenteditable with role=textbox
-      return document.querySelector('[contenteditable="true"][role="textbox"]');
-    } else if (STATE.provider === 'gemini') {
-      return (
-        document.querySelector('textarea') ||
-        document.querySelector('[contenteditable="true"]')
-      );
-    }
-    return null;
-  }
-
-  async function focusAndSetValue(el, text) {
-    if (!el) return;
-    console.log('[SideQuest] focusAndSetValue: element type =', el.tagName);
-    el.focus();
-    await new Promise(r => requestAnimationFrame(r));
-    
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      // Use the native setter so React detects the change
-      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      if (setter) {
-        setter.call(el, text);
-        console.log('[SideQuest] Used native setter');
-      } else {
-        el.value = text;
-        console.log('[SideQuest] Used direct assignment');
-      }
-      // Dispatch comprehensive event sequence
-      ['input', 'change', 'keyup', 'keydown'].forEach(type => {
-        el.dispatchEvent(new Event(type, { bubbles: true }));
-      });
-    } else if (el.getAttribute('contenteditable') === 'true') {
-      try {
-        document.execCommand('selectAll', false, null);
-        document.execCommand('insertText', false, text);
-        console.log('[SideQuest] Used execCommand for contenteditable');
-      } catch {
-        el.textContent = text;
-        console.log('[SideQuest] Used textContent fallback');
-      }
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  }
-
-  async function triggerSend(el) {
-    if (!el) return;
-    console.log('[SideQuest] triggerSend starting');
-    
-    // Give the input time to fully register the value change
-    await new Promise(r => setTimeout(r, 150));
-    
-    // Try to find send button using multiple strategies
-    let sendBtn = null;
-    
-    // Strategy 1: Look for send-button data-testid (most reliable for ChatGPT)
-    sendBtn = document.querySelector('button[data-testid="send-button"]');
-    if (sendBtn && !sendBtn.disabled) {
-      console.log('[SideQuest] Found send button via data-testid');
-    } else {
-      sendBtn = null;
-    }
-    
-    // Strategy 2: Look for button near the input with aria-label containing "send"
-    if (!sendBtn) {
-      const buttons = Array.from(document.querySelectorAll('button'));
-      sendBtn = buttons.find(b => {
-        const label = (b.getAttribute('aria-label') || '').toLowerCase();
-        const title = (b.getAttribute('title') || '').toLowerCase();
-        return (label.includes('send') || title.includes('send')) && !b.disabled;
-      });
-      if (sendBtn) console.log('[SideQuest] Found send button via aria-label');
-    }
-    
-    // Strategy 3: Look for submit button in the form/container
-    if (!sendBtn) {
-      sendBtn = el.closest('form')?.querySelector('button[type="submit"]:not([disabled])');
-      if (sendBtn) console.log('[SideQuest] Found send button as form submit');
-    }
-    
-    // Strategy 4: Look for button with SVG or text containing "send"
-    if (!sendBtn) {
-      const buttons = Array.from(document.querySelectorAll('button'));
-      sendBtn = buttons.find(b => {
-        const html = b.innerHTML.toLowerCase();
-        return (html.includes('send') || html.includes('plane') || html.includes('arrow')) && !b.disabled;
-      });
-      if (sendBtn) console.log('[SideQuest] Found send button via innerHTML');
-    }
-    
-    if (sendBtn) {
-      console.log('[SideQuest] Clicking send button');
-      sendBtn.click();
-      await new Promise(r => setTimeout(r, 50));
-      sendBtn.click(); // Click twice to be sure
-    } else {
-      console.log('[SideQuest] No send button found, falling back to Enter key');
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-      await new Promise(r => setTimeout(r, 50));
-      el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-      await new Promise(r => setTimeout(r, 50));
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-    }
-    console.log('[SideQuest] triggerSend complete');
-  }
-
-  // Floating overlay star anchored to the latest assistant bubble (extra fallback)
+  // Floating overlay star anchored to the latest assistant bubble
   let overlayStarEl = null; let overlayTarget = null; let overlayBound = null;
   function ensureOverlayFor(node) {
     overlayTarget = node;
@@ -354,14 +223,8 @@
     }
     positionOverlay();
   }
-  function positionOverlay() {
-    if (!overlayStarEl || !overlayTarget) return;
-    const r = overlayTarget.getBoundingClientRect();
-    overlayStarEl.style.top = `${Math.max(0, r.top + window.scrollY + 6)}px`;
-    overlayStarEl.style.left = `${Math.max(0, r.right + window.scrollX - 28)}px`;
-    overlayStarEl.style.display = r.width > 0 && r.height > 0 ? 'block' : 'none';
-  }
-  function hideOverlay() { if (overlayStarEl) overlayStarEl.style.display = 'none'; }
+
+
 
   // Initialize
    ensureSidebar();

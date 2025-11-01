@@ -1,5 +1,3 @@
-// Sidebar logic: render threads from storage, and send follow-ups via background
-
 const STORAGE_KEY = 'sidequest.threads';
 
 const els = {
@@ -7,8 +5,6 @@ const els = {
   threadView: document.getElementById('threadView'),
   refreshBtn: document.getElementById('refreshBtn'),
   captureLatestBtn: document.getElementById('captureLatestBtn'),
-  composer: document.getElementById('composer'),
-  sendBtn: document.getElementById('sendBtn'),
 };
 
 let state = {
@@ -90,30 +86,7 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-async function sendFollowUp() {
-  const text = els.composer.value.trim();
-  if (!text || !state.currentThreadId) return;
-  els.composer.value = '';
-  // Optimistically append user message
-  await chrome.runtime.sendMessage({
-    type: 'SIDEQUEST_APPEND_MESSAGE',
-    threadId: state.currentThreadId,
-    msg: { role: 'user', content: text, timestamp: Date.now() }
-  });
-  await refresh();
-  // Ask content script to send via page UI
-  await chrome.runtime.sendMessage({ type: 'SIDEQUEST_SEND_FOLLOWUP', text, threadId: state.currentThreadId });
-}
-
 els.refreshBtn.addEventListener('click', refresh);
-els.sendBtn.addEventListener('click', sendFollowUp);
-els.composer.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    sendFollowUp();
-  }
-});
-
 els.captureLatestBtn.addEventListener('click', async () => {
   // Ask content script to capture the most recent assistant bubble
   let res;
