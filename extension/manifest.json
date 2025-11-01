@@ -7,12 +7,17 @@
   "permissions": ["scripting", "storage", "activeTab"],
   "host_permissions": [
     "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
     "https://gemini.google.com/*"
   ],
   "background": { "service_worker": "background/background.js", "type": "module" },
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*", "https://gemini.google.com/*"],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*"
+      ],
       "js": ["content/content.js"],
       "run_at": "document_idle"
     }

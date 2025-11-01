@@ -163,3 +163,74 @@
   ensureSidebar();
   startObserving();
 })();
+
+// ---
+// SideQuest helpers: selection capture + page info gatherer with safe scoping
+// This mirrors the user's custom logic but fixes scope issues and SPA URL changes.
+// ---
+
+(function () {
+  const SQ = {
+    pageTitle: '',
+    metaDescription: '',
+    currentUrl: location.href,
+  };
+
+  // Capture selected text into chrome.storage.local
+  document.addEventListener('mouseup', () => {
+    try {
+      const selectedText = (window.getSelection()?.toString() || '').trim();
+      if (selectedText) {
+        chrome.storage.local.set({ selectedText, hasSelection: true });
+        // optional: console.log(`The selected text is ${selectedText}`);
+      }
+    } catch {}
+  });
+
+  function sqCleanupTitle(anything) {
+    const cleanedText = String(anything || '')
+      .replace(/[^\w\s-]/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+      .trim();
+    const commonStopWords = [
+      "i","me","my","myself","we","our","ours","ourselves","you","your","yours","yourself","yourselves","he","him","his","himself","she","her","hers","herself","it","its","itself","they","them","their","theirs","themselves","what","which","who","whom","this","that","these","those","am","is","are","was","were","be","been","being","have","has","had","having","do","does","did","doing","a","an","the","and","but","if","or","because","as","until","while","of","at","by","for","with","about","against","between","into","through","during","before","after","above","below","to","from","up","down","in","out","on","off","over","under","again","further","then","once","here","there","when","where","why","how","all","any","both","each","few","more","most","other","some","such","no","nor","not","only","own","same","so","than","too","very","s","t","can","will","just","don","should","now"
+    ];
+    const usefulWords = cleanedText
+      .split(' ')
+      .filter(w => w.length > 2 && !commonStopWords.includes(w));
+    return usefulWords.slice(0, 6).join(' ');
+  }
+
+  function sqGatherPageInfo() {
+    try {
+      SQ.pageTitle = document.title || '';
+      const metaTag = document.querySelector('meta[name="description"]');
+      SQ.metaDescription = metaTag?.content || '';
+      const cleanedTitle = sqCleanupTitle(SQ.pageTitle);
+      chrome.storage.local.set({
+        rawPageTitle: SQ.pageTitle,
+        pageTitle: cleanedTitle,
+        metaDescription: SQ.metaDescription,
+        pageUrl: location.href,
+        hasSelection: false,
+      });
+    } catch {}
+  }
+
+  // Run on ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', sqGatherPageInfo);
+  } else {
+    sqGatherPageInfo();
+  }
+
+  // SPA URL change detection (polling fallback)
+  setInterval(() => {
+    if (location.href !== SQ.currentUrl) {
+      SQ.currentUrl = location.href;
+      sqGatherPageInfo();
+    }
+  }, 1000);
+})();
+
