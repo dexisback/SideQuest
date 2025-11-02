@@ -6,6 +6,7 @@
   const STATE = {
     provider: detectProvider(location.href),
     sidebarIframe: null,
+    starredIds: new Set(),
   };
 
   function detectProvider(url) {
@@ -100,7 +101,7 @@
     let answer = (node?.innerText || '').trim();
     let question = '';
     // Ensure we have a stable locator for this DOM node so we can jump back later
-    const locator = ensureLocatorFor(node);
+  const locator = ensureLocatorFor(node);
     // Try to find previous user bubble text
     const all = Array.from(document.querySelectorAll('div, article, section'));
     const idx = all.indexOf(node);
@@ -130,7 +131,7 @@
     if (!node || node.dataset.sidequestAttached) return;
     node.dataset.sidequestAttached = '1';
     // Pre-assign a locator id so future lookups can find the exact DOM node again
-    ensureLocatorFor(node);
+    const loc = ensureLocatorFor(node);
     const btn = document.createElement('button');
     btn.innerHTML = starSvg();
     btn.title = 'Save to SideQuest';
@@ -147,11 +148,23 @@
       padding: '4px',
       boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
       zIndex: '2147483646',
-      color: '#111'
+      color: '#111',
+      transition: 'background 150ms ease, color 150ms ease, border-color 150ms ease'
     });
+    btn.dataset.locatorId = loc?.id || '';
+    // Hover feedback
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(0,0,0,0.04)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = '#fff'; });
     btn.addEventListener('click', () => {
       const payload = extractQAFromBubble(node);
-      chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload });
+      flashPress(btn);
+      chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload }, () => {
+        if (payload?.locator?.id) {
+          STATE.starredIds.add(payload.locator.id);
+          setStarActive(btn, true);
+          showToastNear(btn, 'Bookmarked');
+        }
+      });
     });
 
     // Create a relatively positioned wrapper if needed
@@ -236,6 +249,11 @@
       sendResponse?.({ ok: true });
       return true;
     }
+    if (msg?.type === 'SIDEQUEST_THREADS_UPDATED') {
+      // Sidebar/storage changed – refresh starred set and visuals
+      refreshStarredFromStorage();
+      return false;
+    }
     return false;
   });
 
@@ -251,15 +269,34 @@
         position: 'absolute', border: '1px solid rgba(0,0,0,0.1)', background: '#fff', borderRadius: '6px',
         padding: '4px', fontSize: '0', cursor: 'pointer', zIndex: 2147483647, boxShadow: '0 1px 2px rgba(0,0,0,0.08)', color: '#111'
       });
+      overlayStarEl.addEventListener('mouseenter', () => { overlayStarEl.style.background = 'rgba(0,0,0,0.04)'; });
+      overlayStarEl.addEventListener('mouseleave', () => { overlayStarEl.style.background = '#fff'; });
       overlayStarEl.addEventListener('click', (e) => {
         e.stopPropagation();
         if (!overlayTarget) return;
         const payload = extractQAFromBubble(overlayTarget);
-        chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload });
+        flashPress(overlayStarEl);
+        chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload }, () => {
+          if (payload?.locator?.id) {
+            STATE.starredIds.add(payload.locator.id);
+            setStarActive(overlayStarEl, true);
+            // Also update internal star if present
+            try {
+              const internal = overlayTarget.querySelector('.sidequest-star-btn');
+              if (internal) setStarActive(internal, true);
+            } catch {}
+            showToastNear(overlayStarEl, 'Bookmarked');
+          }
+        });
       });
       document.body.appendChild(overlayStarEl);
     }
     positionOverlay();
+    // Reflect state based on locator id
+    try {
+      const loc = ensureLocatorFor(node);
+      setStarActive(overlayStarEl, !!STATE.starredIds.has(loc?.id));
+    } catch {}
   }
   // Position and hide helpers for the floating overlay star (needed by scroll/resize listeners)
   function positionOverlay() {
@@ -336,9 +373,108 @@
     if (bubbles.length) {
       const last = bubbles[bubbles.length - 1];
       if (!hasInternalStar(last)) ensureOverlayFor(last); else hideOverlay();
+      // Sync active visual for internal stars based on storage set
+      bubbles.forEach(b => {
+        try {
+          const btn = b.querySelector('.sidequest-star-btn');
+          if (!btn) return;
+          const id = btn.dataset.locatorId;
+          setStarActive(btn, !!STATE.starredIds.has(id));
+        } catch {}
+      });
     } else {
       hideOverlay();
     }
+  }
+
+  function setStarActive(el, active) {
+    if (!el) return;
+    el.dataset.active = active ? '1' : '';
+    const colorOn = '#f59e0b';
+    const colorOff = '#111';
+    el.style.color = active ? colorOn : colorOff;
+    el.style.borderColor = active ? 'rgba(245,158,11,0.45)' : 'rgba(0,0,0,0.1)';
+    // force svg stroke/fill for clear visual in dark themes
+    try {
+      const svg = el.firstElementChild && el.firstElementChild.tagName.toLowerCase() === 'svg' ? el.firstElementChild : null;
+      if (svg) {
+        const strokeColor = active ? colorOn : colorOff;
+        svg.setAttribute('stroke', strokeColor);
+        // Apply to child shapes as well (polygon/path etc.)
+        const shapes = svg.querySelectorAll('polygon,path,circle,line,polyline');
+        shapes.forEach(sh => {
+          try { sh.setAttribute('stroke', strokeColor); } catch {}
+        });
+        // Fill only the star polygon for the active state
+        const poly = svg.querySelector('polygon');
+        if (poly) {
+          poly.setAttribute('fill', active ? colorOn : 'none');
+        }
+      }
+    } catch {}
+    el.title = active ? 'Bookmarked' : 'Save to SideQuest';
+  }
+
+  function refreshStarredFromStorage() {
+    try {
+      chrome.runtime.sendMessage({ type: 'SIDEQUEST_LIST_THREADS' }, (res) => {
+        try {
+          const d = res?.data || { threads: {}, order: [] };
+          const set = new Set();
+          Object.values(d.threads || {}).forEach(t => {
+            const id = t?.locator?.id || t?.providerMessageId;
+            if (id) set.add(id);
+          });
+          STATE.starredIds = set;
+          // update visuals if stars already attached
+          scanAndAttachStars();
+        } catch {}
+      });
+    } catch {}
+  }
+
+  // --- Micro UX helpers ----------------------------------------------------
+  function flashPress(el) {
+    try {
+      const old = el.style.transform;
+      el.style.transition = 'transform 120ms ease, background 150ms ease';
+      el.style.transform = 'scale(0.94)';
+      el.style.background = 'rgba(0,0,0,0.06)';
+      setTimeout(() => {
+        el.style.transform = old || 'none';
+        el.style.background = '#fff';
+      }, 140);
+    } catch {}
+  }
+
+  function showToastNear(anchorEl, text) {
+    try {
+      const r = anchorEl.getBoundingClientRect();
+      const toast = document.createElement('div');
+      toast.textContent = text;
+      Object.assign(toast.style, {
+        position: 'absolute',
+        top: `${Math.max(0, r.top + window.scrollY - 32)}px`,
+        left: `${Math.max(0, r.left + window.scrollX - 8)}px`,
+        padding: '4px 8px',
+        fontSize: '12px',
+        color: '#111',
+        background: '#fff',
+        border: '1px solid rgba(0,0,0,0.15)',
+        borderRadius: '8px',
+        boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+        zIndex: 2147483647,
+        opacity: '0',
+        transition: 'opacity 160ms ease, transform 160ms ease',
+        transform: 'translateY(-6px)'
+      });
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; });
+      setTimeout(() => {
+        toast.style.opacity = '0'; toast.style.transform = 'translateY(-6px)';
+        setTimeout(() => toast.remove(), 180);
+      }, 900);
+    } catch {}
   }
 
   // --- Sidebar minimize/restore ------------------------------------------
@@ -395,6 +531,8 @@
   chrome.storage.local.get('sidequest.sidebarMinimized', (res) => {
     if (res && res['sidequest.sidebarMinimized']) minimizeSidebar();
   });
+  // Load initial starred set
+  refreshStarredFromStorage();
   
   // Log startup status (no send/input references)
   setTimeout(() => {
