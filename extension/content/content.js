@@ -223,20 +223,30 @@
     }
     positionOverlay();
   }
+  // Position and hide helpers for the floating overlay star (needed by scroll/resize listeners)
+  function positionOverlay() {
+    if (!overlayStarEl || !overlayTarget) return;
+    const r = overlayTarget.getBoundingClientRect();
+    overlayStarEl.style.top = `${Math.max(0, r.top + window.scrollY + 6)}px`;
+    overlayStarEl.style.left = `${Math.max(0, r.right + window.scrollX - 28)}px`;
+    overlayStarEl.style.display = r.width > 0 && r.height > 0 ? 'block' : 'none';
+  }
+
+  function hideOverlay() {
+    if (overlayStarEl) overlayStarEl.style.display = 'none';
+  }
 
 
 
   // Initialize
-   ensureSidebar();
-   startObserving();
-   
-   // Log startup status
-   setTimeout(() => {
-     const bubbles = findAssistantBubbles();
-     const input = findChatInput();
-     const sendBtn = document.querySelector('button[data-testid="send-button"]');
-     console.log('[SideQuest READY] provider=' + STATE.provider + ' bubbles=' + bubbles.length + ' input=' + (input?.tagName || 'none') + ' sendBtn=' + !!sendBtn);
-   }, 500);
+  ensureSidebar();
+  startObserving();
+  
+  // Log startup status (no send/input references)
+  setTimeout(() => {
+    const bubbles = findAssistantBubbles();
+    console.log('[SideQuest READY] provider=' + STATE.provider + ' bubbles=' + bubbles.length);
+  }, 500);
  })();// ---
 // SideQuest helpers: selection capture + page info gatherer with safe scoping
 // This mirrors the user's custom logic but fixes scope issues and SPA URL changes.
