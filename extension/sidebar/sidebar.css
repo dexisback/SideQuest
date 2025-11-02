@@ -55,6 +55,34 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarel
 .msg.assistant { background: #f5faff; }
 .msg .role { font-size: 12px; color: var(--sq-subtle); margin-bottom: 6px; }
 
+/* --- Dark theme readability adjustments --- */
+[data-theme="dark"] .sq-threads li.active {
+  /* Subtle accent tint on dark instead of bright light highlight */
+  background: color-mix(in oklab, var(--sq-accent) 15%, var(--sq-bg));
+}
+
+[data-theme="dark"] .msg {
+  /* Slightly stronger border to separate on dark background */
+  border-color: color-mix(in oklab, var(--sq-border) 85%, var(--sq-bg));
+}
+[data-theme="dark"] .msg.user {
+  /* Neutral bubble a touch lighter than bg for contrast */
+  background: color-mix(in oklab, var(--sq-bg) 88%, white 12%);
+}
+[data-theme="dark"] .msg.assistant {
+  /* Assistant bubble with a gentle accent tint on dark */
+  background: color-mix(in oklab, var(--sq-accent) 12%, var(--sq-bg) 88%);
+}
+
+[data-theme="dark"] .sq-resizer {
+  background: repeating-linear-gradient(90deg, #1a1f29, #1a1f29 2px, #222733 2px, #222733 4px);
+}
+
+[data-theme="dark"] .sq-composer {
+  /* Keep composer slightly lifted but still dark */
+  background: color-mix(in oklab, var(--sq-bg) 96%, white 4%);
+}
+
 .sq-composer { border-top: 1px solid var(--sq-border); padding: 10px; display: grid; grid-template-columns: 1fr auto; gap: 10px; background: color-mix(in oklab, var(--sq-bg) 94%, white); transition: background 200ms ease; }
 .sq-composer textarea { width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--sq-border); border-radius: 10px; font: inherit; box-shadow: inset 0 1px 2px rgba(0,0,0,0.04); }
 .sq-composer button { padding: 10px 14px; border: 1px solid var(--sq-border); border-radius: 10px; background: var(--sq-accent); color: white; cursor: pointer; font-weight: 600; }

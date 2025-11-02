@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Local guard: block pushes to tampermonkey branch
+set -euo pipefail
+BLOCKED_BRANCH="refs/heads/tampermonkey"
+blocked=false
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[[ -z "${remote_ref:-}" ]] && continue
+	if [[ "$remote_ref" == "$BLOCKED_BRANCH" ]]; then
+		blocked=true
+	fi
+done
+
+if [[ "$blocked" == true ]]; then
+	echo
+	echo "[HOOK] Push to '$BLOCKED_BRANCH' is locked locally. Aborting push." 1>&2
+	echo "       To bypass temporarily: GIT_NO_VERIFY=1 git push" 1>&2
+	exit 1
+fi
+exit 0

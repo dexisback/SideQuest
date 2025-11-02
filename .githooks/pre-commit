@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Local guard: block commits directly on tampermonkey branch
+set -euo pipefail
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$current_branch" == "tampermonkey" ]]; then
+  echo
+  echo "[HOOK] Commits on branch 'tampermonkey' are locked locally. Create a new branch instead." 1>&2
+  echo "       e.g., git checkout -b your-feature && commit there" 1>&2
+  exit 1
+fi
+exit 0
+#!/usr/bin/env bash
+# Prevent commits directly on the protected tampermonkey branch
+set -euo pipefail
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$current_branch" == "tampermonkey" ]]; then
+  echo "\n[HOOK] Commits on branch tampermonkey are locked locally. Create a new branch instead." 1>&2
+  echo "      e.g., git checkout -b your-feature && commit there" 1>&2
+  exit 1
+fi
+exit 0
+EOF
+chmod +x /home/amaan/my_stuff/gpt_extension/.githooks/pre-commit
