@@ -31,8 +31,10 @@
     iframe.style.boxShadow = '0 0 0 1px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.18)';
     iframe.style.background = 'transparent';
     iframe.style.display = 'block';
+    iframe.style.transition = 'transform 200ms ease, opacity 150ms ease';
     document.documentElement.appendChild(iframe);
     STATE.sidebarIframe = iframe;
+    ensureFloatingHandle();
   }
 
   // Utility: simple debounce
@@ -130,21 +132,22 @@
     // Pre-assign a locator id so future lookups can find the exact DOM node again
     ensureLocatorFor(node);
     const btn = document.createElement('button');
-    btn.textContent = '⭐';
+    btn.innerHTML = starSvg();
     btn.title = 'Save to SideQuest';
     btn.className = 'sidequest-star-btn';
     Object.assign(btn.style, {
       position: 'absolute',
       top: '8px',
       right: '8px',
-      fontSize: '16px',
+      fontSize: '0',
       cursor: 'pointer',
       background: '#fff',
       border: '1px solid rgba(0,0,0,0.1)',
       borderRadius: '6px',
-      padding: '2px 6px',
+      padding: '4px',
       boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-      zIndex: '2147483646'
+      zIndex: '2147483646',
+      color: '#111'
     });
     btn.addEventListener('click', () => {
       const payload = extractQAFromBubble(node);
@@ -223,6 +226,16 @@
       }
       return true;
     }
+    if (msg?.type === 'SIDEQUEST_SIDEBAR_MINIMIZE') {
+      minimizeSidebar();
+      sendResponse?.({ ok: true });
+      return true;
+    }
+    if (msg?.type === 'SIDEQUEST_SIDEBAR_RESTORE') {
+      restoreSidebar();
+      sendResponse?.({ ok: true });
+      return true;
+    }
     return false;
   });
 
@@ -232,11 +245,11 @@
     overlayTarget = node;
     if (!overlayStarEl) {
       overlayStarEl = document.createElement('button');
-      overlayStarEl.textContent = '⭐';
+      overlayStarEl.innerHTML = starSvg();
       overlayStarEl.title = 'Save to SideQuest';
       Object.assign(overlayStarEl.style, {
         position: 'absolute', border: '1px solid rgba(0,0,0,0.1)', background: '#fff', borderRadius: '6px',
-        padding: '2px 6px', fontSize: '16px', cursor: 'pointer', zIndex: 2147483647, boxShadow: '0 1px 2px rgba(0,0,0,0.08)'
+        padding: '4px', fontSize: '0', cursor: 'pointer', zIndex: 2147483647, boxShadow: '0 1px 2px rgba(0,0,0,0.08)', color: '#111'
       });
       overlayStarEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -308,11 +321,80 @@
     return null;
   }
 
+  function starSvg() {
+    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"></polygon></svg>';
+  }
+
+  function hasInternalStar(node) {
+    try { return !!node.querySelector('.sidequest-star-btn'); } catch { return false; }
+  }
+
+  // Override scan to only show overlay if the latest bubble has no internal star
+  function scanAndAttachStars() {
+    const bubbles = findAssistantBubbles();
+    bubbles.forEach(attachStar);
+    if (bubbles.length) {
+      const last = bubbles[bubbles.length - 1];
+      if (!hasInternalStar(last)) ensureOverlayFor(last); else hideOverlay();
+    } else {
+      hideOverlay();
+    }
+  }
+
+  // --- Sidebar minimize/restore ------------------------------------------
+  function ensureFloatingHandle() {
+    if (STATE.handleBtn) return;
+    const btn = document.createElement('button');
+    btn.textContent = '◀ SideQuest';
+    Object.assign(btn.style, {
+      position: 'fixed',
+      top: '10px',
+      right: '8px',
+      zIndex: 2147483647,
+      padding: '6px 10px',
+      borderRadius: '999px',
+      border: '1px solid rgba(0,0,0,0.12)',
+      background: '#ffffff',
+      color: '#111',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+      cursor: 'pointer',
+      fontSize: '12px',
+      display: 'none'
+    });
+    btn.addEventListener('click', () => restoreSidebar());
+    document.documentElement.appendChild(btn);
+    STATE.handleBtn = btn;
+  }
+
+  function minimizeSidebar() {
+    if (!STATE.sidebarIframe) return;
+    try {
+      STATE.sidebarIframe.style.transform = 'translateX(100%)';
+      STATE.sidebarIframe.style.opacity = '0.9';
+      if (STATE.handleBtn) STATE.handleBtn.style.display = 'inline-block';
+      chrome.storage.local.set({ 'sidequest.sidebarMinimized': true });
+    } catch {}
+  }
+
+  function restoreSidebar() {
+    if (!STATE.sidebarIframe) return;
+    try {
+      STATE.sidebarIframe.style.transform = 'translateX(0)';
+      STATE.sidebarIframe.style.opacity = '1';
+      if (STATE.handleBtn) STATE.handleBtn.style.display = 'none';
+      chrome.storage.local.set({ 'sidequest.sidebarMinimized': false });
+    } catch {}
+  }
+
 
 
   // Initialize
   ensureSidebar();
   startObserving();
+  // Restore minimized state on load
+  chrome.storage.local.get('sidequest.sidebarMinimized', (res) => {
+    if (res && res['sidequest.sidebarMinimized']) minimizeSidebar();
+  });
   
   // Log startup status (no send/input references)
   setTimeout(() => {

@@ -4,16 +4,31 @@
   --sq-text: #111827;
   --sq-subtle: #6b7280;
   --sq-accent: #3b82f6;
+  --threads-width: 220px;
+  --btn-hover-bg: #f3f4f6;
+  --elev: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+[data-theme="dark"] {
+  --sq-bg: #0f1115;
+  --sq-border: #2a2e37;
+  --sq-text: #e5e7eb;
+  --sq-subtle: #9aa3b2;
+  --sq-accent: #60a5fa;
+  --btn-hover-bg: #1a1f29;
+  --elev: 0 8px 24px rgba(0,0,0,0.4);
 }
 
 html, body { margin: 0; padding: 0; height: 100%; }
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; color: var(--sq-text); background: var(--sq-bg); }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; color: var(--sq-text); background: var(--sq-bg); transition: background 200ms ease, color 200ms ease; }
 
-.sq-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--sq-border); background: #fafafa; }
-.sq-header .icon { border: 1px solid var(--sq-border); border-radius: 8px; background: #fff; padding: 6px 8px; cursor: pointer; line-height: 1; }
+.sq-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--sq-border); background: color-mix(in oklab, var(--sq-bg) 92%, white); transition: background 200ms ease, border-color 200ms ease; }
+.sq-header .icon { border: 1px solid var(--sq-border); border-radius: 10px; background: var(--sq-bg); padding: 6px 8px; cursor: pointer; line-height: 1; color: var(--sq-text); transition: background 150ms ease, color 150ms ease, border-color 150ms ease, transform 120ms ease; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.sq-header .icon:hover { background: var(--btn-hover-bg); color: var(--sq-accent); border-color: color-mix(in oklab, var(--sq-border), var(--sq-accent) 30%); transform: translateY(-1px); }
 .sq-header-actions { display: flex; gap: 8px; }
+.sq-header .icon svg { width: 16px; height: 16px; display: block; }
 
-.sq-content { display: grid; grid-template-columns: 1.1fr 2fr; height: calc(100vh - 46px); }
+.sq-content { display: grid; grid-template-columns: var(--threads-width) 6px 1fr; height: calc(100vh - 46px); }
 
 .sq-threads { border-right: 1px solid var(--sq-border); overflow: auto; }
 .sq-threads ul { list-style: none; margin: 0; padding: 0; }
@@ -21,6 +36,15 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarel
 .sq-threads li.active { background: #f0f7ff; border-left: 3px solid var(--sq-accent); }
 .sq-threads .title { font-weight: 600; }
 .sq-threads .meta { font-size: 12px; color: var(--sq-subtle); }
+
+.sq-threads .row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sq-threads .actions { display: flex; gap: 6px; flex-shrink: 0; }
+.sq-threads .btn-icon { border: 1px solid var(--sq-border); border-radius: 8px; background: var(--sq-bg); width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1; color: var(--sq-text); transition: background 150ms ease, color 150ms ease, border-color 150ms ease, transform 120ms ease; }
+.sq-threads .btn-icon:hover { background: var(--btn-hover-bg); color: var(--sq-accent); border-color: color-mix(in oklab, var(--sq-border), var(--sq-accent) 30%); transform: translateY(-1px); }
+.sq-threads .btn-icon svg { width: 16px; height: 16px; display: block; }
+
+.sq-resizer { cursor: col-resize; background: repeating-linear-gradient(90deg, #f3f4f6, #f3f4f6 2px, #e5e7eb 2px, #e5e7eb 4px); }
+.sq-resizer:hover { background: #e5e7eb; }
 
 .sq-thread-panel { display: flex; flex-direction: column; height: 100%; }
 .sq-thread-view { flex: 1; overflow: auto; padding: 14px; }
@@ -31,7 +55,7 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarel
 .msg.assistant { background: #f5faff; }
 .msg .role { font-size: 12px; color: var(--sq-subtle); margin-bottom: 6px; }
 
-.sq-composer { border-top: 1px solid var(--sq-border); padding: 10px; display: grid; grid-template-columns: 1fr auto; gap: 10px; background: #fafafa; }
+.sq-composer { border-top: 1px solid var(--sq-border); padding: 10px; display: grid; grid-template-columns: 1fr auto; gap: 10px; background: color-mix(in oklab, var(--sq-bg) 94%, white); transition: background 200ms ease; }
 .sq-composer textarea { width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--sq-border); border-radius: 10px; font: inherit; box-shadow: inset 0 1px 2px rgba(0,0,0,0.04); }
 .sq-composer button { padding: 10px 14px; border: 1px solid var(--sq-border); border-radius: 10px; background: var(--sq-accent); color: white; cursor: pointer; font-weight: 600; }
 
