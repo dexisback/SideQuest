@@ -84,15 +84,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       }
       case 'SIDEQUEST_SEND_FOLLOWUP': {
-        // Forward to content script to interact with page DOM
-        const res = await sendToActiveTab({ type: 'SIDEQUEST_SEND_FOLLOWUP', text: message.text, threadId: message.threadId });
+        // Forward to content script to relay to Tampermonkey via postMessage
+        const res = await sendToActiveTab({ type: 'SIDEQUEST_SEND_FOLLOWUP', text: message.text });
         sendResponse(res?.ok === false ? res : { ok: true });
         break;
       }
       case 'SIDEQUEST_CAPTURE_LATEST': {
         const res = await sendToActiveTab({ type: 'SIDEQUEST_CAPTURE_LATEST' });
-        // If content captured and background created a thread via BOOKMARK handler,
-        // we just bubble the result back.
         sendResponse(res?.ok === false ? res : { ok: true });
         break;
       }

@@ -175,7 +175,7 @@
   window.addEventListener('scroll', positionOverlay, { passive: true });
   window.addEventListener('resize', positionOverlay, { passive: true });
 
-  // Handle messages from sidebar
+  // Handle messages from sidebar/background
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === 'SIDEQUEST_CAPTURE_LATEST') {
       try {
@@ -198,6 +198,22 @@
       }
       return true;
     }
+    
+    // Relay send message to Tampermonkey via postMessage
+    if (msg?.type === 'SIDEQUEST_SEND_FOLLOWUP') {
+      try {
+        console.log('[SideQuest] Relaying send message to Tampermonkey:', msg);
+        window.postMessage({
+          type: 'SIDEQUEST_SEND_FOLLOWUP',
+          text: msg.text
+        }, '*');
+        sendResponse({ ok: true });
+        return true;
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    }
+    
     return false;
   });
 
@@ -226,17 +242,27 @@
 
 
 
+  function positionOverlay() {
+    if (!overlayStarEl || !overlayTarget) return;
+    const r = overlayTarget.getBoundingClientRect();
+    overlayStarEl.style.top = `${Math.max(0, r.top + window.scrollY + 6)}px`;
+    overlayStarEl.style.left = `${Math.max(0, r.right + window.scrollX - 28)}px`;
+    overlayStarEl.style.display = r.width > 0 && r.height > 0 ? 'block' : 'none';
+  }
+
+  function hideOverlay() {
+    if (overlayStarEl) overlayStarEl.style.display = 'none';
+  }
+
   // Initialize
-   ensureSidebar();
-   startObserving();
-   
-   // Log startup status
-   setTimeout(() => {
-     const bubbles = findAssistantBubbles();
-     const input = findChatInput();
-     const sendBtn = document.querySelector('button[data-testid="send-button"]');
-     console.log('[SideQuest READY] provider=' + STATE.provider + ' bubbles=' + bubbles.length + ' input=' + (input?.tagName || 'none') + ' sendBtn=' + !!sendBtn);
-   }, 500);
+  ensureSidebar();
+  startObserving();
+  
+  // Log startup status
+  setTimeout(() => {
+    const bubbles = findAssistantBubbles();
+    console.log('[SideQuest READY] provider=' + STATE.provider + ' bubbles=' + bubbles.length);
+  }, 500);
  })();// ---
 // SideQuest helpers: selection capture + page info gatherer with safe scoping
 // This mirrors the user's custom logic but fixes scope issues and SPA URL changes.

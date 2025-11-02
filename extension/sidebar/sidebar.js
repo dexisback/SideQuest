@@ -5,6 +5,8 @@ const els = {
   threadView: document.getElementById('threadView'),
   refreshBtn: document.getElementById('refreshBtn'),
   captureLatestBtn: document.getElementById('captureLatestBtn'),
+  composer: document.getElementById('composer'),
+  sendBtn: document.getElementById('sendBtn'),
 };
 
 let state = {
@@ -87,6 +89,7 @@ function escapeHtml(str) {
 }
 
 els.refreshBtn.addEventListener('click', refresh);
+
 els.captureLatestBtn.addEventListener('click', async () => {
   // Ask content script to capture the most recent assistant bubble
   let res;
@@ -108,6 +111,53 @@ els.captureLatestBtn.addEventListener('click', async () => {
       header.textContent = res?.error ? String(res.error) : 'No assistant message found yet';
       setTimeout(() => (header.textContent = old), 1500);
     }
+  }
+});
+
+// Send follow-up message via background to content script to Tampermonkey
+async function sendFollowUp() {
+  const text = els.composer.value.trim();
+  if (!text) {
+    console.warn('[SideQuest] Empty message, not sending');
+    return;
+  }
+
+  try {
+    console.log('[SideQuest] Sending follow-up:', text);
+    
+    // Send to background script which relays to content script
+    const res = await chrome.runtime.sendMessage({
+      type: 'SIDEQUEST_SEND_FOLLOWUP',
+      text: text
+    });
+
+    if (res?.ok) {
+      console.log('[SideQuest] Message sent successfully');
+      els.composer.value = '';
+      
+      // Optional: show feedback
+      const btnText = els.sendBtn.textContent;
+      els.sendBtn.textContent = '✓ Sent';
+      setTimeout(() => {
+        els.sendBtn.textContent = btnText;
+      }, 1500);
+    } else {
+      console.error('[SideQuest] Send failed:', res?.error);
+      alert('Failed to send message. Make sure Tampermonkey script is installed.');
+    }
+  } catch (error) {
+    console.error('[SideQuest] Error sending follow-up:', error);
+    alert('Error: ' + error.message);
+  }
+}
+
+els.sendBtn.addEventListener('click', sendFollowUp);
+
+// Also send on Ctrl+Enter or Cmd+Enter
+els.composer.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    sendFollowUp();
   }
 });
 
