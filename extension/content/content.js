@@ -97,6 +97,8 @@
     // Best-effort extraction. For MVP, we pull the latest user prompt and assistant text.
     let answer = (node?.innerText || '').trim();
     let question = '';
+    // Ensure we have a stable locator for this DOM node so we can jump back later
+    const locator = ensureLocatorFor(node);
     // Try to find previous user bubble text
     const all = Array.from(document.querySelectorAll('div, article, section'));
     const idx = all.indexOf(node);
@@ -107,7 +109,7 @@
         if (txt && txt.length > 0 && txt.length < 2000) { question = txt.slice(0, 600); break; }
       }
     }
-    return { provider: STATE.provider, question, answer };
+    return { provider: STATE.provider, question, answer, locator };
   }
 
   function findLatestAssistantBubble() {
@@ -125,6 +127,8 @@
   function attachStar(node) {
     if (!node || node.dataset.sidequestAttached) return;
     node.dataset.sidequestAttached = '1';
+    // Pre-assign a locator id so future lookups can find the exact DOM node again
+    ensureLocatorFor(node);
     const btn = document.createElement('button');
     btn.textContent = '⭐';
     btn.title = 'Save to SideQuest';
@@ -188,11 +192,32 @@
         // Fallback: capture current text selection if any
         const sel = (window.getSelection()?.toString() || '').trim();
         if (sel) {
-          const payload = { provider: STATE.provider, question: '', answer: sel };
+          const payload = { provider: STATE.provider, question: '', answer: sel, locator: null };
           chrome.runtime.sendMessage({ type: 'SIDEQUEST_BOOKMARK', payload }, () => sendResponse({ ok: true, via: 'selection' }));
           return true;
         }
         sendResponse({ ok: false, error: 'no-bubble' });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+      return true;
+    }
+    if (msg?.type === 'SIDEQUEST_JUMP_TO') {
+      try {
+        const node = findNodeByLocator(msg.locator, msg.fallbackText);
+        if (node) {
+          // Smooth scroll and a subtle highlight
+          node.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+          try {
+            node.style.transition = 'box-shadow 0.8s ease';
+            const oldShadow = node.style.boxShadow;
+            node.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.45)';
+            setTimeout(() => (node.style.boxShadow = oldShadow || ''), 1200);
+          } catch {}
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: false, error: 'not-found' });
+        }
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });
       }
@@ -234,6 +259,53 @@
 
   function hideOverlay() {
     if (overlayStarEl) overlayStarEl.style.display = 'none';
+  }
+
+  // --- Jump-to helpers -----------------------------------------------------
+  function ensureLocatorFor(node) {
+    if (!node) return null;
+    // Attach a persistent data attribute id on the assistant bubble container
+    if (!node.dataset.sidequestId) {
+      node.dataset.sidequestId = 'sq-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    const text = (node.innerText || '').trim();
+    return { type: 'dataset', id: node.dataset.sidequestId, fp: fingerprint(text) };
+  }
+
+  function fingerprint(text) {
+    try {
+      let h = 2166136261;
+      const s = String(text || '');
+      for (let i = 0; i < s.length; i++) {
+        h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+      }
+      return (h >>> 0).toString(16);
+    } catch { return null; }
+  }
+
+  function findNodeByLocator(locator, fallbackText) {
+    try {
+      if (locator?.type === 'dataset' && locator?.id) {
+        const escaped = (window.CSS && CSS.escape) ? CSS.escape(locator.id) : locator.id.replace(/"/g, '\\"');
+        const n = document.querySelector(`[data-sidequest-id="${escaped}"]`);
+        if (n) return n;
+      }
+      // Fallback: match by fingerprint on assistant bubbles
+      const fpTarget = locator?.fp || fingerprint(fallbackText || '');
+      if (fpTarget) {
+        const candidates = findAssistantBubbles();
+        for (let i = candidates.length - 1; i >= 0; i--) {
+          const c = candidates[i];
+          const txt = (c.innerText || '').trim();
+          if (fingerprint(txt) === fpTarget) {
+            // Reattach id for future fast lookup
+            ensureLocatorFor(c);
+            return c;
+          }
+        }
+      }
+    } catch {}
+    return null;
   }
 
 

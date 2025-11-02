@@ -29,6 +29,8 @@ async function handleBookmark(payload) {
     id,
     title: payload?.question?.slice(0, 80) || 'Thread',
     provider: payload?.provider || 'chatgpt',
+    providerMessageId: payload?.messageId || payload?.locator?.id || null,
+    locator: payload?.locator || null,
     createdAt: now,
     updatedAt: now,
     messages: [
@@ -93,6 +95,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const res = await sendToActiveTab({ type: 'SIDEQUEST_CAPTURE_LATEST' });
         // If content captured and background created a thread via BOOKMARK handler,
         // we just bubble the result back.
+        sendResponse(res?.ok === false ? res : { ok: true });
+        break;
+      }
+      case 'SIDEQUEST_JUMP_TO': {
+        const res = await sendToActiveTab({ type: 'SIDEQUEST_JUMP_TO', locator: message.locator, threadId: message.threadId, fallbackText: message.fallbackText });
         sendResponse(res?.ok === false ? res : { ok: true });
         break;
       }

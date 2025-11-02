@@ -52,6 +52,14 @@ function renderThreadList() {
       state.currentThreadId = id;
       renderThreadList();
       renderThreadView(id);
+      // Ask content script to jump to the bookmarked answer in the main page
+      const lastAssistant = (t.messages || []).slice().reverse().find(m => m.role === 'assistant');
+      chrome.runtime.sendMessage({
+        type: 'SIDEQUEST_JUMP_TO',
+        threadId: id,
+        locator: t.locator || null,
+        fallbackText: lastAssistant?.content || ''
+      }).catch(() => {});
     });
     els.threadList.appendChild(li);
   }
