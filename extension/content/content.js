@@ -31,8 +31,10 @@
     iframe.style.boxShadow = '0 0 0 1px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.18)';
     iframe.style.background = 'transparent';
     iframe.style.display = 'block';
+    iframe.style.transition = 'transform 200ms ease, opacity 150ms ease';
     document.documentElement.appendChild(iframe);
     STATE.sidebarIframe = iframe;
+    ensureFloatingHandle();
   }
 
   // Utility: simple debounce
@@ -223,6 +225,16 @@
       }
       return true;
     }
+    if (msg?.type === 'SIDEQUEST_SIDEBAR_MINIMIZE') {
+      minimizeSidebar();
+      sendResponse?.({ ok: true });
+      return true;
+    }
+    if (msg?.type === 'SIDEQUEST_SIDEBAR_RESTORE') {
+      restoreSidebar();
+      sendResponse?.({ ok: true });
+      return true;
+    }
     return false;
   });
 
@@ -308,11 +320,60 @@
     return null;
   }
 
+  // --- Sidebar minimize/restore ------------------------------------------
+  function ensureFloatingHandle() {
+    if (STATE.handleBtn) return;
+    const btn = document.createElement('button');
+    btn.textContent = '◀ SideQuest';
+    Object.assign(btn.style, {
+      position: 'fixed',
+      top: '10px',
+      right: '8px',
+      zIndex: 2147483647,
+      padding: '6px 10px',
+      borderRadius: '999px',
+      border: '1px solid rgba(0,0,0,0.12)',
+      background: '#ffffff',
+      color: '#111',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+      cursor: 'pointer',
+      fontSize: '12px',
+      display: 'none'
+    });
+    btn.addEventListener('click', () => restoreSidebar());
+    document.documentElement.appendChild(btn);
+    STATE.handleBtn = btn;
+  }
+
+  function minimizeSidebar() {
+    if (!STATE.sidebarIframe) return;
+    try {
+      STATE.sidebarIframe.style.transform = 'translateX(100%)';
+      STATE.sidebarIframe.style.opacity = '0.9';
+      if (STATE.handleBtn) STATE.handleBtn.style.display = 'inline-block';
+      chrome.storage.local.set({ 'sidequest.sidebarMinimized': true });
+    } catch {}
+  }
+
+  function restoreSidebar() {
+    if (!STATE.sidebarIframe) return;
+    try {
+      STATE.sidebarIframe.style.transform = 'translateX(0)';
+      STATE.sidebarIframe.style.opacity = '1';
+      if (STATE.handleBtn) STATE.handleBtn.style.display = 'none';
+      chrome.storage.local.set({ 'sidequest.sidebarMinimized': false });
+    } catch {}
+  }
+
 
 
   // Initialize
   ensureSidebar();
   startObserving();
+  // Restore minimized state on load
+  chrome.storage.local.get('sidequest.sidebarMinimized', (res) => {
+    if (res && res['sidequest.sidebarMinimized']) minimizeSidebar();
+  });
   
   // Log startup status (no send/input references)
   setTimeout(() => {

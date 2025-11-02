@@ -103,6 +103,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse(res?.ok === false ? res : { ok: true });
         break;
       }
+      case 'SIDEQUEST_SIDEBAR_MINIMIZE': {
+        const res = await sendToActiveTab({ type: 'SIDEQUEST_SIDEBAR_MINIMIZE' });
+        sendResponse(res?.ok === false ? res : { ok: true });
+        break;
+      }
+      case 'SIDEQUEST_SIDEBAR_RESTORE': {
+        const res = await sendToActiveTab({ type: 'SIDEQUEST_SIDEBAR_RESTORE' });
+        sendResponse(res?.ok === false ? res : { ok: true });
+        break;
+      }
       default:
         sendResponse({ ok: false });
     }

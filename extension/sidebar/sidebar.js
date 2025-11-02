@@ -5,6 +5,7 @@ const els = {
   threadView: document.getElementById('threadView'),
   refreshBtn: document.getElementById('refreshBtn'),
   captureLatestBtn: document.getElementById('captureLatestBtn'),
+  minimizeBtn: document.getElementById('minimizeBtn'),
 };
 
 let state = {
@@ -118,6 +119,15 @@ els.captureLatestBtn.addEventListener('click', async () => {
     }
   }
 });
+
+// Minimize sidebar (handled by content script via background forwarder)
+if (els.minimizeBtn) {
+  els.minimizeBtn.addEventListener('click', async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: 'SIDEQUEST_SIDEBAR_MINIMIZE' });
+    } catch {}
+  });
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'SIDEQUEST_THREADS_UPDATED') {
