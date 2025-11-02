@@ -53,6 +53,31 @@ async function appendMessage(threadId, msg) {
   chrome.runtime.sendMessage({ type: 'SIDEQUEST_THREADS_UPDATED' }).catch(() => {});
 }
 
+async function deleteThread(threadId) {
+  const data = await getThreads();
+  if (data.threads[threadId]) {
+    delete data.threads[threadId];
+    data.order = (data.order || []).filter(id => id !== threadId);
+    await setThreads(data);
+    chrome.runtime.sendMessage({ type: 'SIDEQUEST_THREADS_UPDATED' }).catch(() => {});
+  }
+}
+
+async function clearAllThreads() {
+  await setThreads({ threads: {}, order: [] });
+  chrome.runtime.sendMessage({ type: 'SIDEQUEST_THREADS_UPDATED' }).catch(() => {});
+}
+
+async function renameThread(threadId, title) {
+  const data = await getThreads();
+  const t = data.threads[threadId];
+  if (!t) return;
+  t.title = String(title || '').slice(0, 120);
+  t.updatedAt = Date.now();
+  await setThreads(data);
+  chrome.runtime.sendMessage({ type: 'SIDEQUEST_THREADS_UPDATED' }).catch(() => {});
+}
+
 // Broadcast helper to active tab (content script)
 async function sendToActiveTab(message) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -111,6 +136,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'SIDEQUEST_SIDEBAR_RESTORE': {
         const res = await sendToActiveTab({ type: 'SIDEQUEST_SIDEBAR_RESTORE' });
         sendResponse(res?.ok === false ? res : { ok: true });
+        break;
+      }
+      case 'SIDEQUEST_DELETE_THREAD': {
+        await deleteThread(message.threadId);
+        sendResponse({ ok: true });
+        break;
+      }
+      case 'SIDEQUEST_CLEAR_ALL_THREADS': {
+        await clearAllThreads();
+        sendResponse({ ok: true });
+        break;
+      }
+      case 'SIDEQUEST_RENAME_THREAD': {
+        await renameThread(message.threadId, message.title);
+        sendResponse({ ok: true });
         break;
       }
       default:

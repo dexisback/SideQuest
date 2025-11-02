@@ -132,21 +132,22 @@
     // Pre-assign a locator id so future lookups can find the exact DOM node again
     ensureLocatorFor(node);
     const btn = document.createElement('button');
-    btn.textContent = '⭐';
+    btn.innerHTML = starSvg();
     btn.title = 'Save to SideQuest';
     btn.className = 'sidequest-star-btn';
     Object.assign(btn.style, {
       position: 'absolute',
       top: '8px',
       right: '8px',
-      fontSize: '16px',
+      fontSize: '0',
       cursor: 'pointer',
       background: '#fff',
       border: '1px solid rgba(0,0,0,0.1)',
       borderRadius: '6px',
-      padding: '2px 6px',
+      padding: '4px',
       boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-      zIndex: '2147483646'
+      zIndex: '2147483646',
+      color: '#111'
     });
     btn.addEventListener('click', () => {
       const payload = extractQAFromBubble(node);
@@ -244,11 +245,11 @@
     overlayTarget = node;
     if (!overlayStarEl) {
       overlayStarEl = document.createElement('button');
-      overlayStarEl.textContent = '⭐';
+      overlayStarEl.innerHTML = starSvg();
       overlayStarEl.title = 'Save to SideQuest';
       Object.assign(overlayStarEl.style, {
         position: 'absolute', border: '1px solid rgba(0,0,0,0.1)', background: '#fff', borderRadius: '6px',
-        padding: '2px 6px', fontSize: '16px', cursor: 'pointer', zIndex: 2147483647, boxShadow: '0 1px 2px rgba(0,0,0,0.08)'
+        padding: '4px', fontSize: '0', cursor: 'pointer', zIndex: 2147483647, boxShadow: '0 1px 2px rgba(0,0,0,0.08)', color: '#111'
       });
       overlayStarEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -318,6 +319,26 @@
       }
     } catch {}
     return null;
+  }
+
+  function starSvg() {
+    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"></polygon></svg>';
+  }
+
+  function hasInternalStar(node) {
+    try { return !!node.querySelector('.sidequest-star-btn'); } catch { return false; }
+  }
+
+  // Override scan to only show overlay if the latest bubble has no internal star
+  function scanAndAttachStars() {
+    const bubbles = findAssistantBubbles();
+    bubbles.forEach(attachStar);
+    if (bubbles.length) {
+      const last = bubbles[bubbles.length - 1];
+      if (!hasInternalStar(last)) ensureOverlayFor(last); else hideOverlay();
+    } else {
+      hideOverlay();
+    }
   }
 
   // --- Sidebar minimize/restore ------------------------------------------
